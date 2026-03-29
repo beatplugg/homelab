@@ -1,0 +1,21 @@
+grafana:
+  enabled: true
+
+  replicas: 1
+
+  persistence:
+    type: pvc
+    enabled: true
+    storageClassName: local-path
+    accessModes:
+      - ReadWriteOnce
+    size: 2Gi
+    mountPath: /var/lib/grafana
+
+  ingress:
+    enabled: false
+
+  service:
+    type: NodePort
+    nodePort: 30000
+    port: 3000

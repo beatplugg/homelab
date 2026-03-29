@@ -1,0 +1,48 @@
+kubelet:
+  enabled: true
+  namespace: kube-system
+  serviceMonitor:
+    additionalLabels:
+      monitoring-by: prometheus
+
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true
+
+prometheus:
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 30001
+    port: 9090
+  prometheusSpec:
+
+    replicas: 1
+
+    global:
+      scrape_interval: 5s
+      scrape_timeout: 4s
+
+    serviceMonitorSelectorNilUsesHelmValues: true
+
+    scrapeConfigSelectorNilUsesHelmValues: false
+    additionalScrapeConfigs: []
+
+    additionalScrapeConfigsInternal:
+      - job_name: "external-node-exporters"
+        static_configs:
+          - targets:
+              - "192.168.0.101:9100"
+              - "192.168.0.102:9100"
+              - "192.168.0.103:9100"
+
+    storageSpec: null
+
+    retention: 2h
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi

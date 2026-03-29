@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kubelet-proxy
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: kubelet-proxy
+  template:
+    metadata:
+      labels:
+        app: kubelet-proxy
+    spec:
+      hostPID: true
+      hostNetwork: true
+      containers:
+        - name: proxy
+          image: alpine/socat
+          args:
+            - "tcp-listen:10250,fork,reuseaddr"
+            - "tcp-connect:127.0.0.1:10250"
+          securityContext:
+            privileged: true

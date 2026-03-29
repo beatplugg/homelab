@@ -1,0 +1,35 @@
+---
+- name: Install Helm only on master node
+  hosts: k3s-master
+  become: yes
+
+  tasks:
+    - name: Ensure curl is installed
+      package:
+        name: curl
+        state: present
+
+    - name: Download Helm binary
+      get_url:
+        url: https://get.helm.sh/helm-v3.15.4-linux-arm64.tar.gz
+        dest: /tmp/helm.tgz
+
+    - name: Extract Helm
+      unarchive:
+        src: /tmp/helm.tgz
+        dest: /tmp/
+        remote_src: yes
+
+    - name: Move helm binary to /usr/local/bin
+      copy:
+        src: /tmp/linux-arm64/helm
+        dest: /usr/local/bin/helm
+        mode: '0755'
+        remote_src: yes
+
+    - name: Check helm version
+      command: /usr/local/bin/helm version
+      register: helm_version_output
+
+    - debug:
+        msg: "{{ helm_version_output.stdout }}"

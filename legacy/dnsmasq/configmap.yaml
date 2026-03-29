@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dnsmasq-config
+  namespace: dns
+data:
+  dnsmasq.conf: |
+    port=53
+    no-resolv
+    server=8.8.8.8
+    server=1.1.1.1
+    address=/grafana.home/192.168.0.101
+    address=/prometheus.home/192.168.0.101
+    address=/alert.home/192.168.0.101

@@ -1,0 +1,47 @@
+---
+- name: Configure cgroups v2 for all Raspberry Pi k3s nodes
+  hosts: k3s-nodes
+  become: yes
+  gather_facts: yes
+
+  vars:
+    cgroup_args: "cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1 systemd.unified_cgroup_hierarchy=1 cgroup_no_v1=all"
+
+  tasks:
+
+    - name: Ensure /boot/efi/cmdline.txt exists
+      stat:
+        path: /boot/efi/cmdline.txt
+      register: cmdline_file
+
+    - name: Fail if cmdline.txt not found (not a Raspberry Pi firmware boot)
+      fail:
+        msg: "/boot/efi/cmdline.txt not found — this node does not use Raspberry Pi bootloader!"
+      when: not cmdline_file.stat.exists
+
+    - name: Backup original cmdline.txt
+      copy:
+        src: /boot/efi/cmdline.txt
+        dest: /boot/efi/cmdline.txt.bak
+        backup: yes
+
+    - name: Read cmdline.txt
+      command: cat /boot/efi/cmdline.txt
+      register: cmdline_content
+      changed_when: false
+
+    - name: Add cgroup kernel parameters if they are missing
+      lineinfile:
+        path: /boot/efi/cmdline.txt
+        backrefs: no
+        regexp: "{{ cgroup_args }}"
+        line: "{{ cmdline_content.stdout }} {{ cgroup_args }}"
+      when: cgroup_args not in cmdline_content.stdout
+      register: cmdline_modification
+
+    - name: Reboot if cmdline was modified
+      reboot:
+        msg: "Rebooting to apply new kernel cmdline parameters"
+        connect_timeout: 30
+        reboot_timeout: 180
+      when: cmdline_modification.changed

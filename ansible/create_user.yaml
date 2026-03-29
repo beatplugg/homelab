@@ -1,0 +1,37 @@
+---
+- name: Create user beatplugg on all nodes
+  hosts: nodes
+  become: yes
+
+  vars:
+    username: "beatplugg"
+    pubkey: "SSH PUBLIC KEY"
+
+  tasks:
+    - name: Ensure user exists
+      user:
+        name: "{{ username }}"
+        shell: /bin/bash
+        create_home: yes
+
+    - name: Add user to sudoers (no password)
+      copy:
+        dest: "/etc/sudoers.d/{{ username }}"
+        content: "{{ username }} ALL=(ALL) NOPASSWD:ALL"
+        mode: '0440'
+
+    - name: Create .ssh directory
+      file:
+        path: "/home/{{ username }}/.ssh"
+        state: directory
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0700'
+
+    - name: Add authorized key
+      copy:
+        dest: "/home/{{ username }}/.ssh/authorized_keys"
+        content: "{{ pubkey }}"
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0600'

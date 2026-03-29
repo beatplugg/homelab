@@ -1,0 +1,37 @@
+---
+- name: Set hostname based on last IP octet
+  hosts: nodes
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # Mapping: last_octet → hostname
+    hostname_map:
+      "101": "rpi1"
+      "102": "rpi2"
+      "103": "rpi3"
+
+  tasks:
+
+    - name: Extract last octet of IP
+      set_fact:
+        last_octet: "{{ ansible_default_ipv4.address.split('.')[-1] }}"
+
+    - name: Determine hostname from map
+      set_fact:
+        new_hostname: "{{ hostname_map[last_octet] | default('node-' + last_octet) }}"
+
+    - name: Show what hostname will be set
+      debug:
+        msg: "Setting hostname to {{ new_hostname }}"
+
+    - name: Set the hostname
+      ansible.builtin.hostname:
+        name: "{{ new_hostname }}"
+
+    - name: Update /etc/hosts entry for 127.0.0.1
+      lineinfile:
+        path: /etc/hosts
+        regexp: "^127\\.0\\.1\\.1"
+        line: "127.0.1.1    {{ new_hostname }}"
+        state: present

@@ -1,0 +1,12 @@
+- hosts: nodes
+  become: yes
+  tasks:
+
+    - name: Configure static IP for Wired connection 1
+      command: >
+        nmcli connection modify "Wired connection 1"
+        ipv4.method manual
+        ipv4.addresses {{ desired_ip }}/24
+        ipv4.gateway 192.168.0.1
+        ipv4.dns 192.168.0.1
+
