@@ -1,14 +1,14 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: nginx-prod
+  name: prod
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://github.com/beatplugg/homelab.git
     targetRevision: HEAD
-    path: k8s/manifests/patch/prod/nginx
+    path: k8s/manifests/patch/prod
   destination:
     server: https://kubernetes.default.svc
     namespace: prod
