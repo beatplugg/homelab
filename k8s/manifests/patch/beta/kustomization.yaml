@@ -6,9 +6,6 @@ resources:
 
 namespace: beta
 
-commonLabels:
-  env: beta
-
 images:
   - name: nginx
     newTag: "1.27.0"
