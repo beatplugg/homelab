@@ -1,0 +1,100 @@
+---
+- name: Check disk usage on k3s nodes
+  hosts: nodes
+  become: true
+  gather_facts: true
+
+  vars:
+    output_dir: "./reports"
+
+  tasks:
+    - name: Create reports directory locally
+      delegate_to: localhost
+      become: false
+      run_once: true
+      ansible.builtin.file:
+        path: "{{ output_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Get hostname
+      ansible.builtin.command: hostname
+      register: hostname_cmd
+      changed_when: false
+
+    - name: Show filesystem usage
+      ansible.builtin.command: df -h
+      register: df_output
+      changed_when: false
+
+    - name: Show block devices
+      ansible.builtin.command: lsblk
+      register: lsblk_output
+      changed_when: false
+
+    - name: Check /var/lib/rancher/k3s size
+      ansible.builtin.shell: |
+        if [ -d /var/lib/rancher/k3s ]; then
+          du -sh /var/lib/rancher/k3s
+        else
+          echo "/var/lib/rancher/k3s not found"
+        fi
+      register: k3s_dir_size
+      changed_when: false
+
+    - name: Check /var/lib/kubelet size
+      ansible.builtin.shell: |
+        if [ -d /var/lib/kubelet ]; then
+          du -sh /var/lib/kubelet
+        else
+          echo "/var/lib/kubelet not found"
+        fi
+      register: kubelet_dir_size
+      changed_when: false
+
+    - name: Check /var/log size
+      ansible.builtin.shell: |
+        if [ -d /var/log ]; then
+          du -sh /var/log
+        else
+          echo "/var/log not found"
+        fi
+      register: log_dir_size
+      changed_when: false
+
+    - name: Print summary
+      ansible.builtin.debug:
+        msg: |
+          ===== {{ inventory_hostname }} =====
+          Hostname: {{ hostname_cmd.stdout }}
+
+          --- df -h ---
+          {{ df_output.stdout }}
+
+          --- lsblk ---
+          {{ lsblk_output.stdout }}
+
+          --- important dirs ---
+          {{ k3s_dir_size.stdout }}
+          {{ kubelet_dir_size.stdout }}
+          {{ log_dir_size.stdout }}
+
+    - name: Save summary to local file
+      delegate_to: localhost
+      become: false
+      ansible.builtin.copy:
+        content: |
+          ===== {{ inventory_hostname }} =====
+          Hostname: {{ hostname_cmd.stdout }}
+
+          --- df -h ---
+          {{ df_output.stdout }}
+
+          --- lsblk ---
+          {{ lsblk_output.stdout }}
+
+          --- important dirs ---
+          {{ k3s_dir_size.stdout }}
+          {{ kubelet_dir_size.stdout }}
+          {{ log_dir_size.stdout }}
+        dest: "{{ output_dir }}/{{ inventory_hostname }}.txt"

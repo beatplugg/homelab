@@ -1,0 +1,6 @@
+githubConfigUrl: https://github.com/beatplugg/homelab
+
+githubConfigSecret: pre-defined-secret
+
+minRunners: 1
+maxRunners: 5

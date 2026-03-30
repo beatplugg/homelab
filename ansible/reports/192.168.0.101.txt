@@ -1,0 +1,71 @@
+===== 192.168.0.101 =====
+Hostname: rpi1
+
+--- df -h ---
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/mmcblk0p3   14G  5.0G  7.8G  40% /
+devtmpfs        4.0M     0  4.0M   0% /dev
+tmpfs           8.0G     0  8.0G   0% /dev/shm
+tmpfs           3.2G   33M  3.2G   2% /run
+tmpfs           1.0M     0  1.0M   0% /run/credentials/systemd-journald.service
+/dev/mmcblk0p1  500M  101M  400M  21% /boot/efi
+tmpfs           1.0M     0  1.0M   0% /run/credentials/getty@tty1.service
+tmpfs            16G   16K   16G   1% /var/lib/kubelet/pods/7bc9ac37-94da-4eaf-abd8-2d179229d762/volumes/kubernetes.io~empty-dir/config-out
+tmpfs            16G     0   16G   0% /var/lib/kubelet/pods/7bc9ac37-94da-4eaf-abd8-2d179229d762/volumes/kubernetes.io~projected/tls-assets
+tmpfs            16G   16K   16G   1% /var/lib/kubelet/pods/7bc9ac37-94da-4eaf-abd8-2d179229d762/volumes/kubernetes.io~secret/config-volume
+tmpfs            16G     0   16G   0% /var/lib/kubelet/pods/7bc9ac37-94da-4eaf-abd8-2d179229d762/volumes/kubernetes.io~secret/web-config
+tmpfs            16G     0   16G   0% /var/lib/kubelet/pods/7bc9ac37-94da-4eaf-abd8-2d179229d762/volumes/kubernetes.io~secret/cluster-tls-config
+tmpfs           170M   48K  170M   1% /var/lib/kubelet/pods/908a1723-c11a-4a60-ab9c-8c8d6771e113/volumes/kubernetes.io~projected/kube-api-access-p9krk
+tmpfs            16G   48K   16G   1% /var/lib/kubelet/pods/7bc9ac37-94da-4eaf-abd8-2d179229d762/volumes/kubernetes.io~projected/kube-api-access-sdl4g
+tmpfs            16G   16K   16G   1% /var/lib/kubelet/pods/6f13d92f-b9ca-4c98-9f94-8e338856d890/volumes/kubernetes.io~secret/config
+tmpfs            16G   16K   16G   1% /var/lib/kubelet/pods/6f13d92f-b9ca-4c98-9f94-8e338856d890/volumes/kubernetes.io~projected/tls-assets
+tmpfs            16G   48K   16G   1% /var/lib/kubelet/pods/6f13d92f-b9ca-4c98-9f94-8e338856d890/volumes/kubernetes.io~empty-dir/config-out
+tmpfs            16G     0   16G   0% /var/lib/kubelet/pods/6f13d92f-b9ca-4c98-9f94-8e338856d890/volumes/kubernetes.io~secret/web-config
+tmpfs            16G   48K   16G   1% /var/lib/kubelet/pods/72fb101f-99d3-415d-8120-e3b6a644ba94/volumes/kubernetes.io~projected/kube-api-access-bjqhv
+tmpfs            16G   48K   16G   1% /var/lib/kubelet/pods/0ba7dd16-d963-4cb3-a063-5367e6447025/volumes/kubernetes.io~projected/kube-api-access-mb5mv
+tmpfs            16G   48K   16G   1% /var/lib/kubelet/pods/6f13d92f-b9ca-4c98-9f94-8e338856d890/volumes/kubernetes.io~projected/kube-api-access-mqpnd
+tmpfs            16G   48K   16G   1% /var/lib/kubelet/pods/2602428a-5a60-4a2d-a606-c471cb116360/volumes/kubernetes.io~projected/kube-api-access-5cpjv
+shm              64M     0   64M   0% /run/k3s/containerd/io.containerd.grpc.v1.cri/sandboxes/25906e14a80e879269f6601ea0cca3c444affe510c79386d534b6f536f14a3ec/shm
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/25906e14a80e879269f6601ea0cca3c444affe510c79386d534b6f536f14a3ec/rootfs
+shm              64M     0   64M   0% /run/k3s/containerd/io.containerd.grpc.v1.cri/sandboxes/d4f2f45ff4723b8c54d4e14b66c0a117d780d3265894d8474d548799dd5144e1/shm
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/d4f2f45ff4723b8c54d4e14b66c0a117d780d3265894d8474d548799dd5144e1/rootfs
+shm              64M     0   64M   0% /run/k3s/containerd/io.containerd.grpc.v1.cri/sandboxes/901618e23d9fb6f9d03e69af27e685c1d8195aca45fc9596ca26d6cd9e7a81ab/shm
+shm              64M     0   64M   0% /run/k3s/containerd/io.containerd.grpc.v1.cri/sandboxes/325c9cfae7e727e0c72b8711deae042287ae0cab4f8f5b5fe20b304de6e86f3b/shm
+shm              64M     0   64M   0% /run/k3s/containerd/io.containerd.grpc.v1.cri/sandboxes/090bb4b4d2862e9852cb8094de0ffbc1b2c634bdb0a3afa3925e52dd9e71c0fa/shm
+shm              64M     0   64M   0% /run/k3s/containerd/io.containerd.grpc.v1.cri/sandboxes/46ca59e897901fbedb31e401bd087eb23a69d17f078835616a0fe2c103c579a5/shm
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/901618e23d9fb6f9d03e69af27e685c1d8195aca45fc9596ca26d6cd9e7a81ab/rootfs
+shm              64M     0   64M   0% /run/k3s/containerd/io.containerd.grpc.v1.cri/sandboxes/1e08b62a42723996f45c451efb4a15aedb7586b60df7ed9962e5f4f07464eca0/shm
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/325c9cfae7e727e0c72b8711deae042287ae0cab4f8f5b5fe20b304de6e86f3b/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/46ca59e897901fbedb31e401bd087eb23a69d17f078835616a0fe2c103c579a5/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/e3fc44467d56b12ea47f8ed30bb5853584ee3516bfc181936d82a4a10b985c31/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/1e08b62a42723996f45c451efb4a15aedb7586b60df7ed9962e5f4f07464eca0/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/090bb4b4d2862e9852cb8094de0ffbc1b2c634bdb0a3afa3925e52dd9e71c0fa/rootfs
+shm              64M     0   64M   0% /run/k3s/containerd/io.containerd.grpc.v1.cri/sandboxes/f1f593f93eb3a2dc9902d0ba49449e7bb54bcbac6449a30bd31a017a06848845/shm
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/f1f593f93eb3a2dc9902d0ba49449e7bb54bcbac6449a30bd31a017a06848845/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/f0abe106aca1c73e270070a4518d2a7f9716800a6a400b878e2fdd32c6e63549/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/92d00d124be30a8d7c0fcd2e3dc5d707ed59b976f606edabe8a95cae11f3aef0/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/f2479ef8859aa3140a486b31a3a6fda45a05c03a37e0d4edc875fc47bc1ad914/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/95d931dd62dd617e571baeb885d3e2fde95ebf9fe15ec11fd0f12bd215f16748/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/027c8f561aaa846ab0623393434afb4b838bd781ceff30c96b1a9f9069580a71/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/65d14e7eedfe1b8d2b35014ae1ea0168a8e86770705774ab11979121015e5c5f/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/83ef5e2822fd4b9f7b15826374d950b397dc59c98b78cecf1557e101849a322e/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/e4c207e2d31d58c204699d5c57c47703782e183b05d395c9c205e7a218d29f43/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/c4048fec9f67e07e08dbd5816cbb75a79e67cfd7bf32728e8e5cc9796216b892/rootfs
+overlay          14G  5.0G  7.8G  40% /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/f262b806e291705e8a3408c694f56f5788dc6e5ecbe7e10f08ec5f0e39ba7682/rootfs
+tmpfs           1.6G   16K  1.6G   1% /run/user/1001
+
+--- lsblk ---
+NAME         MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+mmcblk0      179:0    0 14.6G  0 disk 
+├─mmcblk0p1  179:1    0  500M  0 part /boot/efi
+├─mmcblk0p2  179:2    0  512M  0 part [SWAP]
+└─mmcblk0p3  179:3    0 13.6G  0 part /var/lib/kubelet/pods/6f13d92f-b9ca-4c98-9f94-8e338856d890/volume-subpaths/prometheus-pv-01/prometheus/2
+                                      /var/lib/kubelet/pods/6f13d92f-b9ca-4c98-9f94-8e338856d890/volumes/kubernetes.io~local-volume/prometheus-pv-01
+                                      /
+mmcblk0boot0 179:32   0    4M  1 disk 
+mmcblk0boot1 179:64   0    4M  1 disk 
+
+--- important dirs ---
+2.7G	/var/lib/rancher/k3s
+260M	/var/lib/kubelet
+36M	/var/log
