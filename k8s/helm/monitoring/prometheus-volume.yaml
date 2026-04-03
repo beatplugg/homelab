@@ -11,14 +11,14 @@ metadata:
   name: prometheus-pv-01
 spec:
   capacity:
-    storage: 5Gi 
+    storage: 30Gi 
   volumeMode: Filesystem
   accessModes:
   - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: prometheus-local-storage
   local:
-    path: /mnt/data/prometheus-storage 
+    path: /mnt/ssd/prometheus-storage
   nodeAffinity:
     required:
       nodeSelectorTerms:
