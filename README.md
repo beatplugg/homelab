@@ -36,6 +36,7 @@ Use cases:
 - Traefik (ingress)
 - Ansible
 - distributed-llama / exo / Open WebUI
+- docker-compose 
 
 ---
 
