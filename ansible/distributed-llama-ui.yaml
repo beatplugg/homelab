@@ -1,0 +1,382 @@
+---
+- name: Run lightweight distributed-llama UI
+  hosts: dllama-root
+  become: true
+  gather_facts: false
+
+  vars:
+    dllama_ui_user: beatplugg
+    dllama_ui_dir: /mnt/ssd/dllama-ui
+    dllama_ui_legacy_dir: /opt/dllama-ui
+    dllama_ui_port: 3000
+    dllama_api_url: http://127.0.0.1:9999
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart dllama ui
+      ansible.builtin.systemd:
+        name: dllama-ui
+        state: restarted
+        daemon_reload: true
+
+  tasks:
+    - name: Ensure distributed-llama UI directory exists
+      ansible.builtin.file:
+        path: "{{ dllama_ui_dir }}"
+        state: directory
+        owner: "{{ dllama_ui_user }}"
+        group: "{{ dllama_ui_user }}"
+        mode: '0755'
+
+    - name: Check legacy distributed-llama UI path
+      ansible.builtin.stat:
+        path: "{{ dllama_ui_legacy_dir }}"
+      register: dllama_ui_legacy_stat
+
+    - name: Stop UI before moving legacy data
+      ansible.builtin.systemd:
+        name: dllama-ui
+        state: stopped
+      failed_when: false
+      when:
+        - dllama_ui_legacy_stat.stat.exists
+        - not dllama_ui_legacy_stat.stat.islnk
+
+    - name: Copy existing UI data to SSD
+      ansible.builtin.command: "cp -a {{ dllama_ui_legacy_dir }}/. {{ dllama_ui_dir }}/"
+      when:
+        - dllama_ui_legacy_stat.stat.exists
+        - not dllama_ui_legacy_stat.stat.islnk
+      changed_when: true
+
+    - name: Remove empty legacy UI directory
+      ansible.builtin.file:
+        path: "{{ dllama_ui_legacy_dir }}"
+        state: absent
+      when:
+        - dllama_ui_legacy_stat.stat.exists
+        - not dllama_ui_legacy_stat.stat.islnk
+
+    - name: Link legacy UI path to SSD
+      ansible.builtin.file:
+        src: "{{ dllama_ui_dir }}"
+        dest: "{{ dllama_ui_legacy_dir }}"
+        state: link
+
+    - name: Install distributed-llama UI server
+      ansible.builtin.copy:
+        dest: "{{ dllama_ui_dir }}/server.py"
+        owner: "{{ dllama_ui_user }}"
+        group: "{{ dllama_ui_user }}"
+        mode: '0755'
+        content: |
+          #!/usr/bin/env python3
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+          API_URL = os.environ.get("DLLAMA_API_URL", "http://127.0.0.1:9999").rstrip("/")
+          MODEL = os.environ.get("DLLAMA_MODEL", "dllama_model_qwen3_0.6b_q40.m")
+          PORT = int(os.environ.get("DLLAMA_UI_PORT", "3000"))
+
+          INDEX = """<!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>distributed-llama</title>
+            <style>
+              :root {
+                color-scheme: light;
+                font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                background: #f5f7fa;
+                color: #17202a;
+              }
+              * { box-sizing: border-box; }
+              body {
+                margin: 0;
+                min-height: 100vh;
+                display: grid;
+                grid-template-rows: auto 1fr;
+              }
+              header {
+                padding: 18px clamp(16px, 4vw, 48px);
+                background: #ffffff;
+                border-bottom: 1px solid #d9e1ea;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+                flex-wrap: wrap;
+              }
+              h1 {
+                margin: 0;
+                font-size: 20px;
+                font-weight: 700;
+              }
+              .status {
+                font-size: 14px;
+                color: #51606f;
+              }
+              main {
+                width: min(1120px, 100%);
+                margin: 0 auto;
+                padding: 24px clamp(16px, 4vw, 48px) 32px;
+                display: grid;
+                grid-template-columns: minmax(260px, 380px) 1fr;
+                gap: 20px;
+              }
+              section {
+                min-width: 0;
+              }
+              label {
+                display: block;
+                margin: 0 0 8px;
+                font-size: 13px;
+                font-weight: 700;
+                color: #3b4856;
+              }
+              textarea, input {
+                width: 100%;
+                border: 1px solid #bdc9d6;
+                border-radius: 6px;
+                padding: 12px;
+                font: inherit;
+                background: #ffffff;
+                color: #17202a;
+              }
+              textarea {
+                min-height: 220px;
+                resize: vertical;
+                line-height: 1.45;
+              }
+              .controls {
+                display: grid;
+                gap: 14px;
+              }
+              .row {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+              }
+              button {
+                margin-top: 14px;
+                width: 100%;
+                border: 0;
+                border-radius: 6px;
+                background: #1d6f5f;
+                color: #ffffff;
+                padding: 12px 14px;
+                font: inherit;
+                font-weight: 700;
+                cursor: pointer;
+              }
+              button:disabled {
+                opacity: .65;
+                cursor: wait;
+              }
+              .output {
+                min-height: 420px;
+                border: 1px solid #d4dde7;
+                border-radius: 6px;
+                background: #ffffff;
+                padding: 16px;
+                white-space: pre-wrap;
+                overflow-wrap: anywhere;
+                line-height: 1.5;
+              }
+              .error { color: #b42318; }
+              @media (max-width: 820px) {
+                main { grid-template-columns: 1fr; }
+              }
+            </style>
+          </head>
+          <body>
+            <header>
+              <h1>distributed-llama</h1>
+              <div class="status" id="status">Checking API...</div>
+            </header>
+            <main>
+              <section>
+                <div class="controls">
+                  <div>
+                    <label for="prompt">Prompt</label>
+                    <textarea id="prompt">Say hi in one short sentence.</textarea>
+                  </div>
+                  <div>
+                    <label for="model">Model</label>
+                    <input id="model" value="__MODEL__">
+                  </div>
+                  <div class="row">
+                    <div>
+                      <label for="tokens">Max tokens</label>
+                      <input id="tokens" type="number" min="1" max="512" value="128">
+                    </div>
+                    <div>
+                      <label for="temperature">Temperature</label>
+                      <input id="temperature" type="number" min="0" max="2" step="0.1" value="0.2">
+                    </div>
+                  </div>
+                  <button id="send">Send</button>
+                </div>
+              </section>
+              <section>
+                <label>Response</label>
+                <div class="output" id="output"></div>
+              </section>
+            </main>
+            <script>
+              const statusEl = document.getElementById("status");
+              const outputEl = document.getElementById("output");
+              const sendButton = document.getElementById("send");
+
+              async function checkApi() {
+                try {
+                  const response = await fetch("/v1/models");
+                  if (!response.ok) throw new Error("HTTP " + response.status);
+                  const data = await response.json();
+                  const model = data.data && data.data[0] && data.data[0].id ? data.data[0].id : "ready";
+                  statusEl.textContent = "API ready: " + model;
+                } catch (error) {
+                  statusEl.textContent = "API unavailable";
+                  statusEl.className = "status error";
+                }
+              }
+
+              async function sendPrompt() {
+                sendButton.disabled = true;
+                outputEl.className = "output";
+                outputEl.textContent = "Thinking...";
+                const payload = {
+                  model: document.getElementById("model").value,
+                  messages: [{ role: "user", content: document.getElementById("prompt").value }],
+                  max_tokens: Number(document.getElementById("tokens").value || 128),
+                  temperature: Number(document.getElementById("temperature").value || 0.2)
+                };
+                try {
+                  const response = await fetch("/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                  });
+                  const text = await response.text();
+                  if (!response.ok) throw new Error(text || ("HTTP " + response.status));
+                  const data = JSON.parse(text);
+                  outputEl.textContent = data.choices[0].message.content || "";
+                } catch (error) {
+                  outputEl.className = "output error";
+                  outputEl.textContent = String(error.message || error);
+                } finally {
+                  sendButton.disabled = false;
+                }
+              }
+
+              sendButton.addEventListener("click", sendPrompt);
+              checkApi();
+            </script>
+          </body>
+          </html>
+          """.replace("__MODEL__", MODEL)
+
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path == "/" or self.path.startswith("/index.html"):
+                      self.send_response(200)
+                      self.send_header("Content-Type", "text/html; charset=utf-8")
+                      self.end_headers()
+                      self.wfile.write(INDEX.encode("utf-8"))
+                      return
+                  if self.path.startswith("/v1/"):
+                      self.proxy()
+                      return
+                  self.send_response(404)
+                  self.end_headers()
+
+              def do_POST(self):
+                  if self.path.startswith("/v1/"):
+                      self.proxy()
+                      return
+                  self.send_response(404)
+                  self.end_headers()
+
+              def proxy(self):
+                  body = None
+                  if "Content-Length" in self.headers:
+                      body = self.rfile.read(int(self.headers["Content-Length"]))
+                  headers = {"Content-Type": self.headers.get("Content-Type", "application/json")}
+                  request = urllib.request.Request(API_URL + self.path, data=body, headers=headers, method=self.command)
+                  try:
+                      with urllib.request.urlopen(request, timeout=300) as response:
+                          data = response.read()
+                          self.send_response(response.status)
+                          self.send_header("Content-Type", response.headers.get("Content-Type", "application/json"))
+                          self.end_headers()
+                          self.wfile.write(data)
+                  except urllib.error.HTTPError as error:
+                      data = error.read()
+                      self.send_response(error.code)
+                      self.send_header("Content-Type", error.headers.get("Content-Type", "text/plain"))
+                      self.end_headers()
+                      self.wfile.write(data)
+                  except Exception as error:
+                      self.send_response(502)
+                      self.send_header("Content-Type", "text/plain; charset=utf-8")
+                      self.end_headers()
+                      self.wfile.write(str(error).encode("utf-8"))
+
+              def log_message(self, fmt, *args):
+                  print("%s - %s" % (self.address_string(), fmt % args), flush=True)
+
+          if __name__ == "__main__":
+              ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+      notify: Restart dllama ui
+
+    - name: Install distributed-llama UI service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/dllama-ui.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=distributed-llama lightweight UI
+          Wants=network-online.target dllama-api.service
+          After=network-online.target dllama-api.service
+
+          [Service]
+          Type=simple
+          User={{ dllama_ui_user }}
+          Group={{ dllama_ui_user }}
+          WorkingDirectory={{ dllama_ui_dir }}
+          Environment=DLLAMA_API_URL={{ dllama_api_url }}
+          Environment=DLLAMA_UI_PORT={{ dllama_ui_port }}
+          Environment=DLLAMA_MODEL=dllama_model_qwen3_0.6b_q40.m
+          ExecStart=/usr/bin/python3 {{ dllama_ui_dir }}/server.py
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+      notify:
+        - Reload systemd
+        - Restart dllama ui
+
+    - name: Enable and start distributed-llama UI
+      ansible.builtin.systemd:
+        name: dllama-ui
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Check distributed-llama UI endpoint locally
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ dllama_ui_port }}/v1/models"
+        return_content: true
+      register: dllama_ui_models
+
+    - name: Print distributed-llama UI URL
+      ansible.builtin.debug:
+        msg: "Open http://{{ inventory_hostname }}:{{ dllama_ui_port }}"

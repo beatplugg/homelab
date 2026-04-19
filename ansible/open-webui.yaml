@@ -1,0 +1,192 @@
+---
+- name: Run Open WebUI on the root node SSD
+  hosts: dllama-root
+  become: true
+  gather_facts: false
+
+  vars:
+    open_webui_dir: /mnt/ssd/open-webui
+    open_webui_data_dir: "{{ open_webui_dir }}/data"
+    open_webui_port: 3000
+    open_webui_image: ghcr.io/open-webui/open-webui:main
+    open_webui_api_base_url: http://host.docker.internal:9999/v1
+    open_webui_api_key: sk-local
+    open_webui_webui_url: "http://{{ inventory_hostname }}:{{ open_webui_port }}"
+    open_webui_default_model: dllama_model_qwen3_14b_q40.m
+    docker_data_root: /mnt/ssd/docker
+    docker_legacy_root: /var/lib/docker
+
+  tasks:
+    - name: Stop lightweight distributed-llama UI
+      ansible.builtin.systemd:
+        name: dllama-ui
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: Ensure SSD directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ open_webui_dir }}"
+        - "{{ open_webui_data_dir }}"
+        - "{{ docker_data_root }}"
+
+    - name: Check current Docker data root
+      ansible.builtin.command: docker info --format '{% raw %}{{.DockerRootDir}}{% endraw %}'
+      register: docker_current_root
+      changed_when: false
+
+    - name: Stop Docker before moving data root
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      failed_when: false
+      loop:
+        - docker.socket
+        - docker
+      when: docker_current_root.stdout != docker_data_root
+
+    - name: Copy existing Docker data to SSD
+      ansible.builtin.shell: |
+        if [ -d "{{ docker_legacy_root }}" ]; then
+          cp -a "{{ docker_legacy_root }}/." "{{ docker_data_root }}/"
+        fi
+      args:
+        executable: /bin/bash
+      when: docker_current_root.stdout != docker_data_root
+      changed_when: true
+
+    - name: Ensure Docker config directory exists
+      ansible.builtin.file:
+        path: /etc/docker
+        state: directory
+        mode: '0755'
+
+    - name: Configure Docker data root on SSD
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+        content: |
+          {
+            "data-root": "{{ docker_data_root }}"
+          }
+      register: docker_daemon_config
+
+    - name: Start Docker with SSD data root
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for Docker to respond
+      ansible.builtin.command: docker info
+      register: docker_info
+      changed_when: false
+      retries: 12
+      delay: 5
+      until: docker_info.rc == 0
+
+    - name: Check Docker data root after restart
+      ansible.builtin.command: docker info --format '{% raw %}{{.DockerRootDir}}{% endraw %}'
+      register: docker_new_root
+      changed_when: false
+
+    - name: Fail if Docker did not move to SSD
+      ansible.builtin.assert:
+        that:
+          - docker_new_root.stdout == docker_data_root
+        fail_msg: "Docker data root is {{ docker_new_root.stdout }}, expected {{ docker_data_root }}."
+
+    - name: Remove old Docker data from microSD after successful migration
+      ansible.builtin.file:
+        path: "{{ docker_legacy_root }}"
+        state: absent
+      when:
+        - docker_new_root.stdout == docker_data_root
+        - docker_legacy_root != docker_data_root
+
+    - name: Link old Docker path to SSD data root
+      ansible.builtin.file:
+        src: "{{ docker_data_root }}"
+        dest: "{{ docker_legacy_root }}"
+        state: link
+      when: docker_new_root.stdout == docker_data_root
+
+    - name: Install Open WebUI compose file
+      ansible.builtin.copy:
+        dest: "{{ open_webui_dir }}/compose.yaml"
+        mode: '0644'
+        content: |
+          services:
+            open-webui:
+              image: {{ open_webui_image }}
+              container_name: open-webui
+              restart: unless-stopped
+              ports:
+                - "{{ open_webui_port }}:8080"
+              environment:
+                ENABLE_OLLAMA_API: "false"
+                ENABLE_OPENAI_API: "true"
+                OPENAI_API_BASE_URL: "{{ open_webui_api_base_url }}"
+                OPENAI_API_BASE_URLS: "{{ open_webui_api_base_url }}"
+                OPENAI_API_KEY: "{{ open_webui_api_key }}"
+                WEBUI_AUTH: "false"
+                WEBUI_URL: "{{ open_webui_webui_url }}"
+                OFFLINE_MODE: "true"
+                ENABLE_VERSION_UPDATE_CHECK: "false"
+                BYPASS_EMBEDDING_AND_RETRIEVAL: "true"
+                DEFAULT_MODELS: "{{ open_webui_default_model }}"
+              extra_hosts:
+                - "host.docker.internal:host-gateway"
+              volumes:
+                - {{ open_webui_data_dir }}:/app/backend/data
+
+    - name: Pull Open WebUI image
+      ansible.builtin.command: docker compose pull --quiet
+      args:
+        chdir: "{{ open_webui_dir }}"
+      register: open_webui_pull
+      changed_when: "'Downloaded newer image' in open_webui_pull.stdout or open_webui_pull.rc == 0"
+
+    - name: Remove partial embedding cache from interrupted startup
+      ansible.builtin.file:
+        path: "{{ open_webui_data_dir }}/cache/embedding"
+        state: absent
+
+    - name: Start Open WebUI
+      ansible.builtin.command: docker compose up -d --force-recreate --quiet-pull
+      args:
+        chdir: "{{ open_webui_dir }}"
+      register: open_webui_compose
+      changed_when: "'Started' in open_webui_compose.stdout or 'Created' in open_webui_compose.stdout or 'Recreated' in open_webui_compose.stdout"
+
+    - name: Wait for Open WebUI HTTP endpoint
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ open_webui_port }}/"
+        status_code:
+          - 200
+          - 302
+          - 307
+        return_content: false
+      register: open_webui_http
+      retries: 120
+      delay: 5
+      until: open_webui_http.status in [200, 302, 307]
+
+    - name: Show Open WebUI containers
+      ansible.builtin.command: docker compose ps
+      args:
+        chdir: "{{ open_webui_dir }}"
+      register: open_webui_ps
+      changed_when: false
+
+    - name: Print Open WebUI status
+      ansible.builtin.debug:
+        msg: |
+          Open WebUI: {{ open_webui_webui_url }}
+          Docker data root: {{ docker_new_root.stdout }}
+          {{ open_webui_ps.stdout }}

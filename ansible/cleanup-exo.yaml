@@ -1,0 +1,175 @@
+---
+- name: Remove exo runtime from Raspberry Pi nodes
+  hosts: nodes
+  become: true
+  gather_facts: false
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3.12
+    exo_user: beatplugg
+    exo_user_home: "/home/{{ exo_user }}"
+    exo_storage_host: 192.168.0.101
+    exo_storage_dir: /mnt/ssd/exo
+    exo_previous_repo_dir: /opt/exo
+    exo_toolchain_wrapper_dir: /usr/local/exo-toolchain
+    exo_uv_bin: /usr/local/bin/uv
+    exo_user_uv_bin: "{{ exo_user_home }}/.local/bin/uv"
+    exo_firewalld_ports:
+      - 52415/tcp
+      - 52416/tcp
+    exo_firewalld_services:
+      - mdns
+    exo_cleanup_remove_uv: true
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Reload firewalld
+      ansible.builtin.command: firewall-cmd --reload
+
+  tasks:
+    - name: Stop and disable exo service if it exists
+      ansible.builtin.systemd:
+        name: exo
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: Remove exo systemd service
+      ansible.builtin.file:
+        path: /etc/systemd/system/exo.service
+        state: absent
+      notify: Reload systemd
+
+    - name: Remove exo config directory
+      ansible.builtin.file:
+        path: /etc/exo
+        state: absent
+
+    - name: Remove shared exo mount from worker fstab and unmount it
+      ansible.posix.mount:
+        path: "{{ exo_storage_dir }}"
+        state: absent
+      when: inventory_hostname != exo_storage_host
+
+    - name: Remove failed previous root checkout
+      ansible.builtin.file:
+        path: "{{ exo_previous_repo_dir }}"
+        state: absent
+
+    - name: Remove exo compiler wrappers
+      ansible.builtin.file:
+        path: "{{ exo_toolchain_wrapper_dir }}"
+        state: absent
+
+    - name: Remove MLX JIT cache
+      ansible.builtin.file:
+        path: /tmp/mlx
+        state: absent
+
+    - name: Remove exo installer scripts
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/uv-install.sh
+        - /tmp/rustup-init.sh
+
+    - name: Remove uv installed for exo
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ exo_uv_bin }}"
+        - "{{ exo_user_uv_bin }}"
+      when: exo_cleanup_remove_uv
+
+    - name: Check whether firewalld is active
+      ansible.builtin.command: systemctl is-active firewalld
+      register: exo_firewalld_active
+      failed_when: false
+      changed_when: false
+
+    - name: Check exo firewall ports
+      ansible.builtin.command: "firewall-cmd --permanent --query-port={{ item }}"
+      loop: "{{ exo_firewalld_ports }}"
+      register: exo_firewall_port_query
+      failed_when: false
+      changed_when: false
+      when: exo_firewalld_active.stdout == "active"
+
+    - name: Close exo firewall ports
+      ansible.builtin.command: "firewall-cmd --permanent --remove-port={{ item.item }}"
+      loop: "{{ exo_firewall_port_query.results | default([]) }}"
+      when:
+        - exo_firewalld_active.stdout == "active"
+        - item.rc == 0
+      notify: Reload firewalld
+
+    - name: Check exo firewall services
+      ansible.builtin.command: "firewall-cmd --permanent --query-service={{ item }}"
+      loop: "{{ exo_firewalld_services }}"
+      register: exo_firewall_service_query
+      failed_when: false
+      changed_when: false
+      when: exo_firewalld_active.stdout == "active"
+
+    - name: Close exo firewall services
+      ansible.builtin.command: "firewall-cmd --permanent --remove-service={{ item.item }}"
+      loop: "{{ exo_firewall_service_query.results | default([]) }}"
+      when:
+        - exo_firewalld_active.stdout == "active"
+        - item.rc == 0
+      notify: Reload firewalld
+
+- name: Remove exo shared storage export and data
+  hosts: 192.168.0.101
+  become: true
+  gather_facts: false
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3.12
+    exo_storage_dir: /mnt/ssd/exo
+    exo_models_dir: "{{ exo_storage_dir }}/models"
+    exo_cleanup_unmount_ssd: false
+    exo_ssd_mount: /mnt/ssd
+
+  handlers:
+    - name: Reload NFS exports
+      ansible.builtin.command: exportfs -ra
+
+  tasks:
+    - name: Remove exo NFS export
+      ansible.builtin.lineinfile:
+        path: /etc/exports
+        regexp: '^{{ exo_storage_dir | regex_escape }}\s+'
+        state: absent
+      notify: Reload NFS exports
+
+    - name: Remove shared exo runtime data while keeping downloaded models
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ exo_storage_dir }}/hosts"
+        - "{{ exo_storage_dir }}/uv-cache"
+        - "{{ exo_storage_dir }}/venv"
+        - "{{ exo_storage_dir }}/uv-python"
+        - "{{ exo_storage_dir }}/npm-cache"
+        - "{{ exo_storage_dir }}/cargo"
+        - "{{ exo_storage_dir }}/rustup"
+        - "{{ exo_storage_dir }}/src"
+
+    - name: Keep downloaded exo models directory
+      ansible.builtin.file:
+        path: "{{ exo_models_dir }}"
+        state: directory
+        mode: '0775'
+
+    - name: Remove SSD mount created by exo if explicitly requested
+      ansible.posix.mount:
+        path: "{{ exo_ssd_mount }}"
+        state: absent
+      when: exo_cleanup_unmount_ssd

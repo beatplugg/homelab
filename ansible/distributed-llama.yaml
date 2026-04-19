@@ -1,0 +1,275 @@
+---
+- name: Install distributed-llama on all nodes
+  hosts: dllama-nodes
+  become: true
+  gather_facts: true
+
+  vars:
+    dllama_user: beatplugg
+    dllama_group: beatplugg
+    dllama_repo: https://github.com/b4rtaz/distributed-llama.git
+    dllama_repo_version: main
+    dllama_dir: "{{ '/mnt/ssd/distributed-llama' if inventory_hostname in groups['dllama-root'] else '/opt/distributed-llama' }}"
+    dllama_legacy_dir: /opt/distributed-llama
+    dllama_worker_port: 9999
+    dllama_api_port: 9999
+    dllama_nthreads: 4
+    dllama_model: qwen3_14b_q40
+    dllama_buffer_float_type: q80
+    dllama_max_seq_len: 4096
+    dllama_apt_update_cache: false
+    dllama_download_model: false
+    dllama_model_path: "{{ dllama_dir }}/models/{{ dllama_model }}/dllama_model_{{ dllama_model }}.m"
+    dllama_tokenizer_path: "{{ dllama_dir }}/models/{{ dllama_model }}/dllama_tokenizer_{{ dllama_model }}.t"
+    dllama_worker_endpoints: "{{ groups['dllama-workers'] | map('regex_replace', '$', ':' ~ dllama_worker_port) | join(' ') }}"
+    dllama_debian_packages:
+      - build-essential
+      - ca-certificates
+      - git
+      - python3
+    dllama_redhat_packages:
+      - ca-certificates
+      - gcc
+      - gcc-c++
+      - git
+      - make
+      - python3
+    dllama_firewalld_ports: "{{ [dllama_worker_port ~ '/tcp', dllama_api_port ~ '/tcp'] | unique }}"
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart dllama worker
+      ansible.builtin.systemd:
+        name: dllama-worker
+        state: restarted
+        daemon_reload: true
+      when: inventory_hostname in groups['dllama-workers']
+
+    - name: Restart dllama api
+      ansible.builtin.systemd:
+        name: dllama-api
+        state: restarted
+        daemon_reload: true
+      when:
+        - inventory_hostname in groups['dllama-root']
+        - dllama_model_stat is defined
+        - dllama_model_stat.stat.exists
+
+    - name: Reload firewalld
+      ansible.builtin.command: firewall-cmd --reload
+
+  tasks:
+    - name: Install build packages on Debian nodes
+      ansible.builtin.apt:
+        name: "{{ dllama_debian_packages }}"
+        state: present
+        update_cache: "{{ dllama_apt_update_cache }}"
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Install build packages on RedHat nodes
+      ansible.builtin.package:
+        name: "{{ dllama_redhat_packages }}"
+        state: present
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Ensure distributed-llama install directory exists
+      ansible.builtin.file:
+        path: "{{ dllama_dir }}"
+        state: directory
+        owner: "{{ dllama_user }}"
+        group: "{{ dllama_group }}"
+        mode: '0755'
+
+    - name: Check legacy distributed-llama path
+      ansible.builtin.stat:
+        path: "{{ dllama_legacy_dir }}"
+      register: dllama_legacy_stat
+
+    - name: Stop services before moving legacy distributed-llama data
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      failed_when: false
+      loop:
+        - dllama-api
+        - dllama-worker
+      when:
+        - inventory_hostname in groups['dllama-root']
+        - dllama_legacy_stat.stat.exists
+        - not dllama_legacy_stat.stat.islnk
+
+    - name: Copy existing distributed-llama data to SSD on root node
+      ansible.builtin.command: "cp -a {{ dllama_legacy_dir }}/. {{ dllama_dir }}/"
+      when:
+        - inventory_hostname in groups['dllama-root']
+        - dllama_legacy_stat.stat.exists
+        - not dllama_legacy_stat.stat.islnk
+      changed_when: true
+
+    - name: Remove empty legacy distributed-llama directory
+      ansible.builtin.file:
+        path: "{{ dllama_legacy_dir }}"
+        state: absent
+      when:
+        - inventory_hostname in groups['dllama-root']
+        - dllama_legacy_stat.stat.exists
+        - not dllama_legacy_stat.stat.islnk
+
+    - name: Link legacy distributed-llama path to SSD on root node
+      ansible.builtin.file:
+        src: "{{ dllama_dir }}"
+        dest: "{{ dllama_legacy_dir }}"
+        state: link
+      when: inventory_hostname in groups['dllama-root']
+
+    - name: Checkout distributed-llama source
+      ansible.builtin.git:
+        repo: "{{ dllama_repo }}"
+        dest: "{{ dllama_dir }}"
+        version: "{{ dllama_repo_version }}"
+        update: true
+      become_user: "{{ dllama_user }}"
+      register: dllama_checkout
+      notify:
+        - Restart dllama worker
+        - Restart dllama api
+
+    - name: Build distributed-llama binaries
+      ansible.builtin.command: make dllama dllama-api
+      args:
+        chdir: "{{ dllama_dir }}"
+      become_user: "{{ dllama_user }}"
+      register: dllama_build
+      changed_when: "'Nothing to be done' not in dllama_build.stdout"
+      notify:
+        - Restart dllama worker
+        - Restart dllama api
+
+    - name: Download model on root node
+      ansible.builtin.command: "python3 launch.py {{ dllama_model }} -y -skip-run"
+      args:
+        chdir: "{{ dllama_dir }}"
+        creates: "{{ dllama_model_path }}"
+      become_user: "{{ dllama_user }}"
+      when:
+        - inventory_hostname in groups['dllama-root']
+        - dllama_download_model | bool
+      notify: Restart dllama api
+
+    - name: Check whether distributed-llama model exists on root node
+      ansible.builtin.stat:
+        path: "{{ dllama_model_path }}"
+      register: dllama_model_stat
+      when: inventory_hostname in groups['dllama-root']
+
+    - name: Install distributed-llama worker service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/dllama-worker.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Distributed Llama worker
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory={{ dllama_dir }}
+          ExecStart=/usr/bin/nice -n -20 {{ dllama_dir }}/dllama worker --host 0.0.0.0 --port {{ dllama_worker_port }} --nthreads {{ dllama_nthreads }}
+          Restart=always
+          RestartSec=5
+          LimitNOFILE=1048576
+
+          [Install]
+          WantedBy=multi-user.target
+      when: inventory_hostname in groups['dllama-workers']
+      notify:
+        - Reload systemd
+        - Restart dllama worker
+
+    - name: Install distributed-llama API service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/dllama-api.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Distributed Llama OpenAI-compatible API
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory={{ dllama_dir }}
+          ExecStart=/usr/bin/nice -n -20 {{ dllama_dir }}/dllama-api --host 0.0.0.0 --port {{ dllama_api_port }} --model {{ dllama_model_path }} --tokenizer {{ dllama_tokenizer_path }} --buffer-float-type {{ dllama_buffer_float_type }} --nthreads {{ dllama_nthreads }} --max-seq-len {{ dllama_max_seq_len }} --workers {{ dllama_worker_endpoints }}
+          Restart=always
+          RestartSec=5
+          LimitNOFILE=1048576
+
+          [Install]
+          WantedBy=multi-user.target
+      when: inventory_hostname in groups['dllama-root']
+      notify:
+        - Reload systemd
+        - Restart dllama api
+
+    - name: Check whether firewalld is active
+      ansible.builtin.command: systemctl is-active firewalld
+      register: dllama_firewalld_active
+      failed_when: false
+      changed_when: false
+
+    - name: Check distributed-llama firewall ports
+      ansible.builtin.command: "firewall-cmd --permanent --query-port={{ item }}"
+      loop: "{{ dllama_firewalld_ports }}"
+      register: dllama_firewall_port_query
+      failed_when: false
+      changed_when: false
+      when: dllama_firewalld_active.stdout == "active"
+
+    - name: Open distributed-llama firewall ports
+      ansible.builtin.command: "firewall-cmd --permanent --add-port={{ item.item }}"
+      loop: "{{ dllama_firewall_port_query.results | default([]) }}"
+      when:
+        - dllama_firewalld_active.stdout == "active"
+        - item.rc != 0
+      notify: Reload firewalld
+
+    - name: Enable and start worker service
+      ansible.builtin.systemd:
+        name: dllama-worker
+        enabled: true
+        state: started
+        daemon_reload: true
+      when: inventory_hostname in groups['dllama-workers']
+
+    - name: Enable and start API service
+      ansible.builtin.systemd:
+        name: dllama-api
+        enabled: true
+        state: started
+        daemon_reload: true
+      when:
+        - inventory_hostname in groups['dllama-root']
+        - dllama_model_stat.stat.exists
+
+    - name: Leave API service stopped until a model is present
+      ansible.builtin.systemd:
+        name: dllama-api
+        enabled: false
+        state: stopped
+        daemon_reload: true
+      failed_when: false
+      when:
+        - inventory_hostname in groups['dllama-root']
+        - not dllama_model_stat.stat.exists
+
+    - name: Reset failed API state while model is absent
+      ansible.builtin.command: systemctl reset-failed dllama-api
+      changed_when: false
+      failed_when: false
+      when:
+        - inventory_hostname in groups['dllama-root']
+        - not dllama_model_stat.stat.exists
